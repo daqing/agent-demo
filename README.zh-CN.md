@@ -29,12 +29,12 @@ go run .
 | 需求 | 实现 |
 |---|---|
 | 已授权工具正常执行 | `weatherTool.Execute` 正常执行并返回模拟天气。 |
-| 未授权工具拒绝执行 | `allowlist.BeforeToolCall` 返回 `Block: true`。motionloop 在参数校验之后、`Tool.Execute` 之前调用该 hook，因此 `deleteTool.Execute` 不会运行（`executions = 0`）。 |
+| 未授权工具拒绝执行 | `allowlist.BeforeToolCall` 返回 `Block: true`。motionloop 在参数校验之后、`Tool.Execute` 之前调用该 hook，因此 `deleteTool.Execute` 不会运行（执行 0 次）。 |
 | 返回失败状态并记录错误 | `paymentTool.Execute` 返回 error，motionloop 将其转换为带 `IsError` 标记的 toolResult 写入会话记录。 |
-| 失败后不继续执行后续动作 | 支付工具在扣款失败处立即返回（`notify = 0`）；`stopAfterError` 在 `AfterToolCall` hook 中设置 `Terminate`，使本轮 run 在下一次 LLM 请求前结束。脚本化的后续调用不会发生（`weather executions = 0`，`provider requests = 1`）。 |
+| 失败后不继续执行后续动作 | 支付工具在扣款失败处立即返回（`notify = 0`）；`stopAfterError` 在 `AfterToolCall` hook 中设置 `Terminate`，使本轮 run 在下一次 LLM 请求前结束。脚本化的后续调用不会发生（weather 工具执行 0 次、模型请求 1 次）。 |
 
 未授权调用的拒绝同样会生成错误 toolResult，但 run 会继续，以便 assistant 向用户
-解释拒绝原因（`provider requests = 2`）；被终止的只有这一次工具调用。
+解释拒绝原因（模型请求 2 次）；被终止的只有这一次工具调用。
 
 ## 文件
 
@@ -45,38 +45,38 @@ go run .
 ## 预期输出
 
 ```text
-=== Scenario 1: authorized tool executes ===
-  assistant: let me check
-  tool call: weather {"city":"Shenzhen"}
-  tool result [ok]: Shenzhen: 29°C, clear
-  assistant: Shenzhen is 29°C and clear.
-  check ok: weather executions = 1 (want 1)
-  check ok: tool result status = ok (want ok)
-  check ok: assistant answer uses the tool result
-PASS
+=== 场景一：已授权工具正常执行 ===
+  助手：我先调用工具确认一下。
+  调用工具：weather {"city":"深圳"}
+  工具结果[成功]：深圳今天 29°C，天气晴朗。
+  助手：深圳今天 29°C，天气晴朗。
+  检查通过：weather 工具执行了 1 次（期望 1 次）
+  检查通过：工具结果状态 = 成功（期望：成功）
+  检查通过：助手回答引用了工具返回的结果
+通过
 
-=== Scenario 2: unauthorized tool is refused ===
-  assistant: let me check
-  tool call: delete_records {"table":"users"}
-  tool result [error]: tool "delete_records" is not authorized for this agent
-  assistant: I cannot delete records because delete_records is not authorized.
-  check ok: delete_records executions = 0 (want 0: tool body must not run)
-  check ok: tool result status = error (want error)
-  check ok: refusal recorded in the transcript
-  check ok: agent continued after the refusal (provider requests = 2, want 2)
-PASS
+=== 场景二：未授权工具被拒绝 ===
+  助手：我先调用工具确认一下。
+  调用工具：delete_records {"table":"users"}
+  工具结果[失败]：工具 "delete_records" 未授权给当前 agent
+  助手：无法删除记录：delete_records 工具未授权。
+  检查通过：delete_records 工具执行了 0 次（期望 0 次：工具函数不得运行）
+  检查通过：工具结果状态 = 失败（期望：失败）
+  检查通过：拒绝原因已写入会话记录
+  检查通过：拒绝后 agent 继续运行（模型请求 2 次，期望 2 次）
+通过
 
-=== Scenario 3: tool failure stops execution ===
-  assistant: let me check
-  tool call: payment_settlement {"orderId":"ord-42","amount":199}
-  tool result [error]: settle order ord-42: mock payment gateway timeout
-  check ok: steps before the failure ran: reserve=1 charge=1
-  check ok: step after the failure did not run: notify=0 (want 0)
-  check ok: tool result status = error (want error)
-  check ok: error recorded in the transcript
-  check ok: follow-up tool did not execute: weather executions = 0 (want 0)
-  check ok: no further agent turn: provider requests = 1 (want 1)
-PASS
+=== 场景三：工具异常终止后续动作 ===
+  助手：我先调用工具确认一下。
+  调用工具：payment_settlement {"orderId":"ord-42","amount":199}
+  工具结果[失败]：结算订单 ord-42 失败：模拟支付网关超时
+  检查通过：失败前的步骤已执行：reserve=1，charge=1
+  检查通过：失败后的步骤未执行：notify=0（期望 0）
+  检查通过：工具结果状态 = 失败（期望：失败）
+  检查通过：错误已写入会话记录
+  检查通过：后续工具未执行：weather 工具执行了 0 次（期望 0 次）
+  检查通过：未再发生 agent 轮次（模型请求 1 次，期望 1 次）
+通过
 
-All scenarios passed.
+全部场景通过。
 ```
